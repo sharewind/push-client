@@ -1,0 +1,10 @@
+target
+.settings
+.project
+.classpath
+*.class
+nohup.out
+shell/nohup.out    
+
+/target
+
