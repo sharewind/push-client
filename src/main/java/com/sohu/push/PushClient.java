@@ -1,14 +1,13 @@
 package com.sohu.push;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.logging.Log;
@@ -31,14 +30,19 @@ import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
 
+import com.sohu.push.PushClient.RegisterResponse;
+import com.sohu.push.PushClient.ResponseView;
 
-//curl -d "hi2 sucess " http://10.10.79.134:8710/put\?channel_id\=11111\&device_type\=0
+
+//curl -d "hi2 sucess " http://10.10.79.134:8501/put\?channel_id\=12002\&device_type\=0
 public class PushClient {
 
 	private Log log = LogFactory.getLog(PushClient.class);
 
-	// 服务端有bug，此处待fixed
-	public static final String registerUrl = "http://10.10.79.134:4171/registration?serial_no=SOHUXXX234242390&device_name=Sohu+Android+test&device_type=3";
+	public static final String registerUrl = "http://10.10.79.134:8501/registration";
+
+//	public static final String registerUrl = "http://localhost:8501/registration";
+
 
 	private static final int device_type_android = 3;
 
@@ -111,8 +115,7 @@ public class PushClient {
 			}
 
 			ObjectMapper mapper = new ObjectMapper();
-			TypeReference ref = new TypeReference<ResponseView<RegisterResponse>>() {
-			};
+			TypeReference<ResponseView<RegisterResponse>> ref = new TypeReference<ResponseView<RegisterResponse>>() {};
 			ResponseView<RegisterResponse> resp = mapper.readValue(responseBody, ref);
 			if (resp.getCode() != 0) {
 				return null;
@@ -143,9 +146,9 @@ public class PushClient {
 
 	public void identify() throws Exception {
 
-		Map<String, String> identifyData = new HashMap<String, String>();
-		identifyData.put("heartbeatInterval", String.valueOf(heartbeatInterval));
-		identifyData.put("client_id", String.valueOf(clientId));
+		Map<String, Object> identifyData = new HashMap<String, Object>();
+		identifyData.put("heartbeatInterval", heartbeatInterval);
+		identifyData.put("client_id", clientId);
 
 		ObjectMapper objectMapper = new ObjectMapper();
 		String json = objectMapper.writeValueAsString(identifyData);
@@ -159,6 +162,7 @@ public class PushClient {
 		buffer.put(lenBytes);
 		buffer.put(json.getBytes());
 		byte[] data = buffer.array();
+
 		System.out.println(new String(data));
 
 		transport.write(data);
@@ -181,7 +185,7 @@ public class PushClient {
 						transport.write(heartbeatBytes);
 						transport.flush();
 						long sleepMs = TimeUnit.SECONDS.toMillis(heartbeatInterval);
-						Thread.currentThread().sleep(sleepMs);
+						Thread.currentThread().sleep(sleepMs/100);
 					}
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -199,7 +203,7 @@ public class PushClient {
 
 					for (;;) {
 						byte[] buf = new byte[4];
-						transport.read(buf, 0, 4);
+						transport.readAll(buf, 0, 4);
 						int size = fromBytes(buf);
 						if (size < 0) {
 							throw new TTransportException("Read a negative frame size (" + size + ")!");
@@ -207,7 +211,7 @@ public class PushClient {
 						System.out.println("receive data ..." + size);
 
 						byte[] buf2 = new byte[size];
-						transport.read(buf2, 0, size);
+						transport.readAll(buf2, 0, size);
 
 						ByteBuffer byteBuffer = ByteBuffer.wrap(buf2);
 						int frameType = byteBuffer.getInt();
@@ -234,8 +238,8 @@ public class PushClient {
 		receiveThread.start();
 	}
 
-	public void subChannel(long channelId, MessageHandler messageHandler) throws TTransportException {
-		String command = String.format("SUB %d\n", channelId);
+	public void subChannel(String channelId, MessageHandler messageHandler) throws TTransportException, UnsupportedEncodingException {
+		String command = String.format("SUB %s\n", channelId);
 		System.out.println(command);
 		transport.write(command.getBytes());
 		transport.flush();
@@ -273,7 +277,7 @@ public class PushClient {
 		pushClient.brokerAddress = registerResponse.broker;
 		pushClient.clientId = registerResponse.deviceId;
 
-		long channelId = 11111L;
+		String channelId = "12002";
 		MessageHandler handler = new MessageHandler() {
 			@Override
 			public void handler(Message m) {
@@ -287,6 +291,7 @@ public class PushClient {
 		pushClient.startReceive();
 
 		pushClient.identify();
+//		Thread.sleep(TimeUnit.SECONDS.toMillis(10));
 		pushClient.subChannel(channelId, handler);
 		countDownLatch.await();
 	}
